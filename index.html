@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>黑白棋</title>
+<meta name="theme-color" content="#1e6a47">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="黑白棋">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+/* Layout: felt board as the hero, a slim score/control column beside it (stacks under it on phones) */
+:root{
+  --bg:#e9ede8; --panel:#f7f8f5; --fg:#1b221e; --muted:#5c6b62; --line:#cfd8d1;
+  --felt:#1e6a47; --felt-2:#195b3d; --grid:#0f3d28; --accent:#c8962e; --hint:rgba(255,255,255,.28);
+  --disc-b:#151515; --disc-w:#f4f2ea;
+  --f-display:"Songti TC","Noto Serif TC","Source Han Serif TC","PMingLiU",Georgia,serif;
+  --f-body:-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111613; --panel:#1a211d; --fg:#e7ece8; --muted:#97a69c; --line:#2c3630;
+  --felt:#1a5c3e; --felt-2:#154d33; --grid:#0a2a1b; --accent:#e0b04a; --hint:rgba(255,255,255,.22);
+  --disc-b:#0c0c0c; --disc-w:#eeece4; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111613; --panel:#1a211d; --fg:#e7ece8; --muted:#97a69c; --line:#2c3630;
+  --felt:#1a5c3e; --felt-2:#154d33; --grid:#0a2a1b; --accent:#e0b04a; --hint:rgba(255,255,255,.22);
+  --disc-b:#0c0c0c; --disc-w:#eeece4; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:980px;margin:0 auto;padding-inline:16px;padding-block:20px 32px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}
+@media (max-width:820px){.wrap{grid-template-columns:minmax(0,1fr)}}
+header{grid-column:1/-1;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--f-display);font-size:30px;margin:0;letter-spacing:.06em;font-weight:700}
+.sub{color:var(--muted);font-size:13px}
+.offline{margin-left:auto;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+
+/* board */
+.board-wrap{width:100%;max-width:580px;justify-self:center}
+.frame{background:linear-gradient(145deg,#5a3b22,#3d2714);padding:clamp(8px,2.2vw,16px);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.coords{display:grid;grid-template-columns:repeat(8,1fr);color:#d9c6a6;font:600 11px var(--f-mono);text-align:center;padding-block:0 4px}
+.row-wrap{display:grid;grid-template-columns:auto 1fr;gap:4px;align-items:stretch}
+.rows{display:grid;grid-template-rows:repeat(8,1fr);color:#d9c6a6;font:600 11px var(--f-mono);align-items:center;padding-inline:2px}
+.board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));aspect-ratio:1;max-width:100%;background:var(--grid);gap:2px;padding:2px;border-radius:3px;position:relative}
+.cell{background:radial-gradient(circle at 50% 40%,var(--felt),var(--felt-2));position:relative;border:0;padding:0;cursor:default;display:grid;place-items:center}
+.cell.can{cursor:pointer}
+.cell.can::after{content:"";width:26%;aspect-ratio:1;border-radius:50%;background:var(--hint)}
+.cell.can:hover::after,.cell.can:focus-visible::after{width:70%;opacity:.6;background:var(--ghost,var(--hint))}
+.cell.hintc::after{content:"";width:70%;aspect-ratio:1;border-radius:50%;opacity:.7;background:var(--ghost);animation:pulse .6s ease 3 alternate}
+@keyframes pulse{to{transform:scale(.8)}}
+.cell:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;z-index:1}
+.star{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--grid);transform:translate(-50%,-50%);pointer-events:none;z-index:1}
+.disc{position:absolute;left:9%;top:9%;width:82%;height:82%;border-radius:50%;transition:transform .32s ease}
+.disc.b{background:radial-gradient(circle at 35% 30%,#4a4a4a,var(--disc-b) 60%);box-shadow:0 2px 3px rgba(0,0,0,.5)}
+.disc.w{background:radial-gradient(circle at 35% 30%,#fff,var(--disc-w) 55%,#cfcbbd);box-shadow:0 2px 3px rgba(0,0,0,.45)}
+.disc.flip{animation:flip .36s ease}
+.disc.drop{animation:drop .22s ease-out}
+.disc.last::after{content:"";position:absolute;inset:38%;border-radius:50%;background:var(--accent)}
+@keyframes flip{0%{transform:scaleX(1)}50%{transform:scaleX(0)}100%{transform:scaleX(1)}}
+@keyframes drop{0%{transform:scale(1.25);opacity:.4}100%{transform:scale(1);opacity:1}}
+.cell.bursting{z-index:3}
+.disc.boom{animation:boom .26s ease-in forwards}
+.disc.pop{animation:pop .24s cubic-bezier(.3,1.6,.5,1)}
+@keyframes boom{0%{transform:scale(1);filter:brightness(1)}35%{transform:scale(1.3);filter:brightness(2.2) saturate(2);box-shadow:0 0 18px 6px #ffb23f}100%{transform:scale(.1);opacity:0;filter:brightness(3)}}
+@keyframes pop{0%{transform:scale(0)}100%{transform:scale(1)}}
+.burst{position:absolute;inset:0;pointer-events:none}
+.burst .ring{position:absolute;left:50%;top:50%;width:80%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%) scale(.2);border:3px solid #ffd27a;box-shadow:0 0 12px #ff7a1f,inset 0 0 10px #ffb23f;animation:ring .42s ease-out forwards}
+.burst .core{position:absolute;left:50%;top:50%;width:70%;aspect-ratio:1;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,#fff6d0,#ffb23f 40%,rgba(255,90,31,.6) 65%,transparent 72%);animation:core .32s ease-out forwards}
+.burst i{position:absolute;left:50%;top:50%;width:var(--sz,7px);height:var(--sz,7px);margin:calc(var(--sz,7px)/-2);border-radius:2px;background:var(--c);transform:translate(0,0) rotate(0);animation:shard .5s cubic-bezier(.15,.7,.3,1) forwards}
+@keyframes ring{to{transform:translate(-50%,-50%) scale(1.7);opacity:0;border-width:1px}}
+@keyframes core{0%{transform:translate(-50%,-50%) scale(.3);opacity:1}100%{transform:translate(-50%,-50%) scale(1.4);opacity:0}}
+@keyframes shard{to{transform:translate(var(--dx),var(--dy)) rotate(var(--rot));opacity:0}}
+@media (prefers-reduced-motion:reduce){.disc.boom,.disc.pop,.burst{animation:none!important;display:none}}
+@media (prefers-reduced-motion:reduce){.disc.flip,.disc.drop{animation:none}}
+
+.status{margin-top:12px;min-height:24px;text-align:center;font-weight:600}
+.status.warn{color:var(--accent)}
+
+/* side panel */
+aside{display:flex;flex-direction:column;gap:16px;min-width:0}
+.score{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.side{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center;transition:border-color .2s,box-shadow .2s}
+.side.on{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
+.side .disc{position:relative;left:auto;top:auto;width:30px;height:30px;grid-row:1/3}
+.side .n{font:700 28px/1 var(--f-mono);font-variant-numeric:tabular-nums}
+.side .who{font-size:12px;color:var(--muted)}
+.group{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.label{font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:600}
+.seg{display:flex;gap:4px;background:var(--bg);padding:3px;border-radius:8px;flex-wrap:wrap}
+.seg button{flex:1;border:0;background:transparent;color:var(--fg);padding:7px 6px;border-radius:6px;font:inherit;font-size:13px;cursor:pointer;min-width:0}
+.seg button[aria-pressed="true"]{background:var(--panel);box-shadow:0 1px 3px rgba(0,0,0,.15);font-weight:700}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;padding:10px;font:inherit;font-weight:600;cursor:pointer}
+.btn.primary{background:var(--felt);border-color:var(--felt);color:#fff;grid-column:1/-1}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.check input{accent-color:var(--felt);width:16px;height:16px}
+.rules{font-size:12.5px;color:var(--muted);margin:0;padding-left:18px}
+.rules li+li{margin-top:2px}
+
+/* game over */
+.over{position:absolute;inset:0;display:grid;place-items:center;background:rgba(8,25,16,.55);border-radius:3px;z-index:5}
+.over .card{background:var(--panel);color:var(--fg);border-radius:12px;padding:20px 24px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:80%}
+.over h2{font-family:var(--f-display);margin:0 0 4px;font-size:24px}
+.over p{margin:0 0 14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.thinking{display:inline-block;width:1em;text-align:left}
+
+/* PWA shell */
+html,body{margin:0}
+[hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-text-size-adjust:100%}
+.board,.cell,.btn,.seg button{-webkit-user-select:none;user-select:none}
+.install{grid-column:1/-1;display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px}
+.install p{margin:0;flex:1;min-width:0}
+.install button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:18px;padding:0 4px;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>黑白棋</h1>
+    <span class="sub">Othello · 8×8</span>
+    <span class="offline" title="不需網路即可遊玩">離線可玩</span>
+  </header>
+  <div class="install" id="install" hidden>
+    <p>想離線玩？在 Safari 點下方的<b>分享</b>按鈕 → <b>加入主畫面</b>，之後從主畫面圖示開啟，沒網路也能玩。</p>
+    <button id="installClose" aria-label="關閉">×</button>
+  </div>
+
+  <div class="board-wrap">
+    <div class="frame">
+      <div class="row-wrap">
+        <div></div>
+        <div class="coords"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+        <div class="rows"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+        <div class="board" id="board" role="grid" aria-label="棋盤"></div>
+      </div>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+
+  <aside>
+    <div class="score">
+      <div class="side" id="sideB"><div class="disc b"></div><div class="n" id="nB">2</div><div class="who" id="whoB">黑子</div></div>
+      <div class="side" id="sideW"><div class="disc w"></div><div class="n" id="nW">2</div><div class="who" id="whoW">白子</div></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="undo">悔棋</button>
+      <button class="btn" id="hintBtn">提示最佳步</button>
+      <button class="btn primary" id="newGame">開新局</button>
+    </div>
+
+    <div class="group">
+      <div class="label">對戰模式</div>
+      <div class="seg" id="modeSeg">
+        <button id="m-ai" data-v="ai">對電腦</button>
+        <button id="m-pvp" data-v="pvp">雙人同機</button>
+      </div>
+      <div class="label">電腦難度</div>
+      <div class="seg" id="levelSeg">
+        <button id="l1" data-v="1">簡單</button>
+        <button id="l2" data-v="2">普通</button>
+        <button id="l3" data-v="3">困難</button>
+      </div>
+      <div class="label">我執</div>
+      <div class="seg" id="colorSeg">
+        <button id="c1" data-v="1">黑子（先手）</button>
+        <button id="c2" data-v="2">白子（後手）</button>
+      </div>
+      <label class="check"><input type="checkbox" id="showMoves" checked> 顯示可下位置</label>
+      <span class="sub">變更模式、難度或執子會在開新局時生效。</span>
+    </div>
+
+    <div class="group">
+      <div class="label">規則</div>
+      <ul class="rules">
+        <li>黑子先下。落子須夾住對方至少一子，被夾住的棋子全部翻面。</li>
+        <li>無處可下時自動跳過，由對方繼續。</li>
+        <li>雙方都無法落子即終局，子多者勝。</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+
+<script>
+(function(){
+const B=1,W=2,DIRS=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const WEIGHTS=[
+ 120,-20, 20,  5,  5, 20,-20,120,
+ -20,-40, -5, -5, -5, -5,-40,-20,
+  20, -5, 15,  3,  3, 15, -5, 20,
+   5, -5,  3,  3,  3,  3, -5,  5,
+   5, -5,  3,  3,  3,  3, -5,  5,
+  20, -5, 15,  3,  3, 15, -5, 20,
+ -20,-40, -5, -5, -5, -5,-40,-20,
+ 120,-20, 20,  5,  5, 20,-20,120];
+const CORNERS={0:[1,8,9],7:[6,14,15],56:[48,49,57],63:[54,55,62]};
+const NAME={1:"黑子",2:"白子"};
+const $=id=>document.getElementById(id);
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+function flipsAt(bd,i,p){
+  if(bd[i])return null;const r=i>>3,c=i&7,o=3-p,res=[];
+  for(const[dr,dc]of DIRS){let rr=r+dr,cc=c+dc;const line=[];
+    while(rr>=0&&rr<8&&cc>=0&&cc<8&&bd[rr*8+cc]===o){line.push(rr*8+cc);rr+=dr;cc+=dc}
+    if(line.length&&rr>=0&&rr<8&&cc>=0&&cc<8&&bd[rr*8+cc]===p)res.push(...line)}
+  return res.length?res:null}
+function legal(bd,p){const m=[];for(let i=0;i<64;i++){if(!bd[i]){const f=flipsAt(bd,i,p);if(f)m.push([i,f])}}return m}
+function count(bd){let b=0,w=0;for(const x of bd){if(x===B)b++;else if(x===W)w++}return{b,w}}
+function play(bd,i,f,p){const nb=bd.slice();nb[i]=p;for(const x of f)nb[x]=p;return nb}
+function initBoard(){const bd=new Array(64).fill(0);bd[27]=W;bd[36]=W;bd[28]=B;bd[35]=B;return bd}
+
+/* ---------- AI ---------- */
+function evaluate(bd,p){
+  const o=3-p;let s=0,pc=0,oc=0;
+  for(let i=0;i<64;i++){const v=bd[i];if(!v)continue;let w=WEIGHTS[i];
+    // squares next to an owned corner are no longer dangerous
+    for(const k in CORNERS){if(bd[k]&&CORNERS[k].includes(i)){w=Math.abs(w)>10?8:w}}
+    if(v===p){s+=w;pc++}else{s-=w;oc++}}
+  const mp=legal(bd,p).length,mo=legal(bd,o).length;
+  s+=(mp-mo)*6;
+  if(pc+oc>54)s+=(pc-oc)*4;
+  return s}
+function negamax(bd,p,d,a,b,passed){
+  const ms=legal(bd,p);
+  if(!ms.length){
+    if(passed){const{b:nb,w:nw}=count(bd);const diff=p===B?nb-nw:nw-nb;return diff*10000}
+    return -negamax(bd,3-p,d,-b,-a,true)}
+  if(d<=0)return evaluate(bd,p);
+  ms.sort((x,y)=>WEIGHTS[y[0]]-WEIGHTS[x[0]]);
+  let best=-Infinity;
+  for(const[i,f]of ms){const v=-negamax(play(bd,i,f,p),3-p,d-1,-b,-a,false);
+    if(v>best)best=v;if(v>a)a=v;if(a>=b)break}
+  return best}
+function bestMove(bd,p,level){
+  const ms=legal(bd,p);if(!ms.length)return null;
+  const empties=bd.filter(x=>!x).length;
+  if(level===1){ // light lookahead with noise
+    const sc=ms.map(([i,f])=>[i,f,-negamax(play(bd,i,f,p),3-p,0,-Infinity,Infinity,false)+Math.random()*60]);
+    sc.sort((x,y)=>y[2]-x[2]);return sc[0]}
+  const depth=level===2?3:(empties<=10?empties:5);
+  ms.sort((x,y)=>WEIGHTS[y[0]]-WEIGHTS[x[0]]);
+  let best=null,a=-Infinity;
+  for(const[i,f]of ms){const v=-negamax(play(bd,i,f,p),3-p,depth-1,-Infinity,-a,false);
+    if(best===null||v>a){a=v;best=[i,f]}}
+  return best}
+
+/* ---------- state ---------- */
+const defaults={mode:"ai",level:2,human:B,showMoves:true};
+let cfg=Object.assign({},defaults,store.get("othello.cfg")||{});
+let pending=Object.assign({},cfg);
+let S=null; // {board,turn,last,history:[],over,passMsg,mode,level,human}
+let prev=null,aiTimer=null,thinking=false,hintCell=-1;
+
+function freshGame(){
+  cfg=Object.assign({},pending);store.set("othello.cfg",cfg);
+  resetAnim();S={board:initBoard(),turn:B,last:-1,history:[],over:false,msg:"",mode:cfg.mode,level:cfg.level,human:cfg.human};
+  prev=null;hintCell=-1;save();render();maybeAI()}
+function save(){store.set("othello.game",S)}
+function isAITurn(){return S.mode==="ai"&&!S.over&&S.turn!==S.human}
+
+function doMove(i,f){
+  S.history.push({board:S.board,turn:S.turn,last:S.last});
+  const p=S.turn;S.board=play(S.board,i,f,p);S.last=i;S.msg="";hintCell=-1;
+  const o=3-p;
+  if(legal(S.board,o).length)S.turn=o;
+  else if(legal(S.board,p).length){S.turn=p;S.msg=NAME[o]+"無處可下，跳過一手。"}
+  else S.over=true;
+  save();render(new Set(f),i);maybeAI()}
+
+function maybeAI(){
+  clearTimeout(aiTimer);
+  if(!isAITurn())return;
+  thinking=true;render();
+  aiTimer=setTimeout(()=>{
+    const mv=bestMove(S.board,S.turn,S.level);thinking=false;
+    if(mv)doMove(mv[0],mv[1])},Math.max(S.level===3?150:420,animEnd-Date.now()+120))}
+
+function undo(){
+  if(!S.history.length||thinking)return;
+  clearTimeout(aiTimer);
+  let st=S.history.pop();
+  if(S.mode==="ai"){while(st.turn!==S.human&&S.history.length)st=S.history.pop()}
+  resetAnim();S.board=st.board;S.turn=st.turn;S.last=st.last;S.over=false;S.msg="";hintCell=-1;prev=null;
+  save();render();maybeAI()}
+
+/* ---------- render ---------- */
+const boardEl=$("board"),cells=[];
+for(let i=0;i<64;i++){const b=document.createElement("button");b.className="cell";b.dataset.i=i;
+  b.setAttribute("aria-label",String.fromCharCode(97+(i&7))+((i>>3)+1));
+  b.addEventListener("click",()=>onCell(i));boardEl.appendChild(b);cells.push(b)}
+[[2,2],[2,6],[6,2],[6,6]].forEach(([r,c])=>{const s=document.createElement("span");s.className="star";
+  s.style.left=(c/8*100)+"%";s.style.top=(r/8*100)+"%";boardEl.appendChild(s)});
+const overEl=document.createElement("div");overEl.className="over";overEl.hidden=true;boardEl.appendChild(overEl);
+
+
+/* ---------- explosion animation ---------- */
+const BOOM=260,POP=240,STEP=70;
+const busy=new Map();let animEnd=0;
+const reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;
+function resetAnim(){for(const t of busy.values())clearTimeout(t);busy.clear();animEnd=0;
+  document.querySelectorAll(".burst").forEach(x=>x.remove());cells.forEach(c=>c.classList.remove("bursting"))}
+function spawnBurst(cell,oldColor){
+  const wrap=document.createElement("div");wrap.className="burst";
+  wrap.innerHTML='<div class="core"></div><div class="ring"></div>';
+  const cols=oldColor===B?["#1a1a1a","#3a3a3a","#ffb23f","#ff5a1f","#ffd27a"]:["#f4f2ea","#ffffff","#ffb23f","#ff5a1f","#ffd27a"];
+  const size=cell.clientWidth;
+  for(let k=0;k<14;k++){const sh=document.createElement("i");const a=Math.random()*Math.PI*2,r=size*(.45+Math.random()*.55);
+    sh.style.setProperty("--dx",Math.cos(a)*r+"px");sh.style.setProperty("--dy",Math.sin(a)*r+"px");
+    sh.style.setProperty("--rot",(Math.random()*540-270)+"deg");sh.style.setProperty("--c",cols[k%cols.length]);
+    sh.style.setProperty("--sz",Math.max(3,size*(.06+Math.random()*.08))+"px");wrap.appendChild(sh)}
+  cell.appendChild(wrap);cell.classList.add("bursting");
+  setTimeout(()=>{wrap.remove();if(!cell.querySelector(".burst"))cell.classList.remove("bursting")},560)}
+function explode(i,placed,newColor){
+  const c=cells[i],d=c.querySelector(".disc");if(!d)return;
+  const old=3-newColor;
+  if(reduced){d.className="disc "+(newColor===B?"b":"w");return}
+  const dist=Math.max(Math.abs((i>>3)-(placed>>3)),Math.abs((i&7)-(placed&7)));
+  const delay=dist*STEP;
+  d.className="disc "+(old===B?"b":"w");
+  animEnd=Math.max(animEnd,Date.now()+delay+BOOM+POP);
+  const t1=setTimeout(()=>{d.classList.add("boom");spawnBurst(c,old);
+    const t2=setTimeout(()=>{busy.delete(i);const v=S.board[i];
+      if(!v){d.remove();return}
+      d.className="disc "+(v===B?"b":"w")+(i===S.last?" last":"")+" pop"},BOOM);
+    busy.set(i,t2)},delay);
+  busy.set(i,t1)}
+
+function onCell(i){
+  if(S.over||thinking||isAITurn()||Date.now()<animEnd)return;
+  const f=flipsAt(S.board,i,S.turn);if(f)doMove(i,f)}
+
+function render(flipped,placed){
+  const bd=S.board,mv=new Map(legal(bd,S.turn).map(x=>[x[0],x[1]]));
+  const humanTurn=!S.over&&!isAITurn();
+  boardEl.style.setProperty("--ghost",S.turn===B?"rgba(0,0,0,.55)":"rgba(255,255,255,.75)");
+  for(let i=0;i<64;i++){
+    const c=cells[i],v=bd[i];
+    let d=c.firstChild;
+    d=c.querySelector(".disc");
+    if(flipped&&flipped.has(i)&&d){explode(i,placed,v)}
+    else if(busy.has(i)){/* explosion in progress */}
+    else if(v){
+      if(!d){d=document.createElement("div");c.prepend(d)}
+      d.className="disc "+(v===B?"b":"w")+(i===S.last?" last":"");
+      if(placed===i)d.classList.add("drop");
+    }else if(d)d.remove();
+    const can=humanTurn&&mv.has(i);
+    c.classList.toggle("can",can&&(cfg.showMoves||hintCell===i));
+    c.style.cursor=can?"pointer":"default";
+    c.classList.toggle("hintc",hintCell===i&&!v);
+    c.tabIndex=can?0:-1;
+  }
+  const{b,w}=count(bd);$("nB").textContent=b;$("nW").textContent=w;
+  $("sideB").classList.toggle("on",!S.over&&S.turn===B);$("sideW").classList.toggle("on",!S.over&&S.turn===W);
+  const tag=p=>S.mode==="ai"?(p===S.human?"你":"電腦"):(p===B?"玩家一":"玩家二");
+  $("whoB").textContent="黑子 · "+tag(B);$("whoW").textContent="白子 · "+tag(W);
+  const st=$("status");st.classList.toggle("warn",!!S.msg);
+  if(S.over){st.textContent="終局";}
+  else if(thinking){st.innerHTML="電腦思考中<span class=\"thinking\" id=\"dots\">…</span>"}
+  else st.textContent=(S.msg?S.msg+" ":"")+"輪到"+NAME[S.turn]+(S.mode==="ai"?"（你）":"")+"落子";
+  $("undo").disabled=!S.history.length||thinking;
+  $("hintBtn").disabled=!humanTurn||thinking;
+  // game over card
+  if(S.over&&Date.now()<animEnd){overEl.hidden=true;setTimeout(()=>render(),animEnd-Date.now()+250)}
+  else if(S.over){
+    let title,sub=`黑 ${b} : ${w} 白`;
+    if(b===w)title="平手";
+    else{const win=b>w?B:W;title=S.mode==="ai"?(win===S.human?"你贏了！":"電腦獲勝"):NAME[win]+"獲勝"}
+    overEl.innerHTML=`<div class="card"><h2>${title}</h2><p>${sub}</p><button class="btn primary" id="again">再來一局</button></div>`;
+    overEl.hidden=false;$("again").onclick=freshGame;
+  }else overEl.hidden=true;
+  syncSeg();
+}
+
+function syncSeg(){
+  for(const b of $("modeSeg").children)b.setAttribute("aria-pressed",b.dataset.v===pending.mode);
+  for(const b of $("levelSeg").children){b.setAttribute("aria-pressed",+b.dataset.v===pending.level);b.disabled=pending.mode!=="ai"}
+  for(const b of $("colorSeg").children){b.setAttribute("aria-pressed",+b.dataset.v===pending.human);b.disabled=pending.mode!=="ai"}
+  const changed=pending.mode!==S.mode||(pending.mode==="ai"&&(pending.level!==S.level||pending.human!==S.human));
+  $("newGame").textContent=changed?"以新設定開新局":"開新局";
+}
+function bindSeg(id,key,num){$(id).addEventListener("click",e=>{const b=e.target.closest("button");if(!b||b.disabled)return;
+  pending[key]=num?+b.dataset.v:b.dataset.v;
+  // empty board: apply immediately
+  if(!S.history.length)freshGame();else syncSeg()})}
+bindSeg("modeSeg","mode",false);bindSeg("levelSeg","level",true);bindSeg("colorSeg","human",true);
+$("showMoves").checked=cfg.showMoves;
+$("showMoves").addEventListener("change",e=>{cfg.showMoves=pending.showMoves=e.target.checked;store.set("othello.cfg",cfg);render()});
+$("newGame").addEventListener("click",freshGame);
+$("undo").addEventListener("click",undo);
+$("hintBtn").addEventListener("click",()=>{if(S.over||isAITurn())return;
+  const mv=bestMove(S.board,S.turn,3);if(!mv)return;hintCell=mv[0];render();
+  cells[hintCell].focus();setTimeout(()=>{hintCell=-1;render()},1800)});
+
+function start(data){
+  const saved=data&&data.S?data.S:store.get("othello.game");
+  if(saved&&Array.isArray(saved.board)&&saved.board.length===64){S=saved;S.history=S.history||[];
+    pending=Object.assign({},cfg,{mode:S.mode,level:S.level,human:S.human});render();maybeAI()}
+  else freshGame()}
+window.claude?.hot?.snapshot?.(()=>({S}));
+window.claude?.hot?.ready?window.claude.hot.ready(start):start(window.claude?.hot?.data??{});
+})();
+</script>
+<script>
+if("serviceWorker" in navigator){addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))}
+(function(){
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const standalone=navigator.standalone||matchMedia("(display-mode: standalone)").matches;
+  let dismissed=false;try{dismissed=localStorage.getItem("othello.installHint")==="0"}catch(e){}
+  const el=document.getElementById("install");
+  if(ios&&!standalone&&!dismissed)el.hidden=false;
+  document.getElementById("installClose").onclick=()=>{el.hidden=true;try{localStorage.setItem("othello.installHint","0")}catch(e){}};
+})();
+</script>
+</body>
+</html>

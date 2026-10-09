@@ -1,0 +1,17 @@
+{
+  "name": "黑白棋 Othello",
+  "short_name": "黑白棋",
+  "description": "離線黑白棋：對電腦或雙人同機",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#e9ede8",
+  "theme_color": "#1e6a47",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
